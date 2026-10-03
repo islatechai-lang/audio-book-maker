@@ -146,31 +146,43 @@ function initVoices() {
     state.voices = window.speechSynthesis.getVoices();
     elements.voiceSelect.innerHTML = '';
 
-    if (state.voices.length === 0) {
+    // Filter to English voices only
+    const englishVoices = state.voices.filter(v => /^en[-_]/i.test(v.lang));
+
+    if (englishVoices.length === 0) {
       const opt = document.createElement('option');
       opt.textContent = 'Default System Voice';
       elements.voiceSelect.appendChild(opt);
       return;
     }
 
-    const sorted = [...state.voices].sort((a, b) => {
-      const aIsNatural = /natural|neural|online|google|aria|guy|jenny/i.test(a.name);
-      const bIsNatural = /natural|neural|online|google|aria|guy|jenny/i.test(b.name);
-      if (aIsNatural && !bIsNatural) return -1;
-      if (!aIsNatural && bIsNatural) return 1;
+    // Sort: Neural/Natural voices first, then alphabetical
+    const sorted = [...englishVoices].sort((a, b) => {
+      const aIsNeural = /natural|neural|online|google|aria|guy|jenny|zira|david|mark|hazel/i.test(a.name);
+      const bIsNeural = /natural|neural|online|google|aria|guy|jenny|zira|david|mark|hazel/i.test(b.name);
+      if (aIsNeural && !bIsNeural) return -1;
+      if (!aIsNeural && bIsNeural) return 1;
       return a.name.localeCompare(b.name);
     });
 
     sorted.forEach((voice) => {
       const opt = document.createElement('option');
       opt.value = voice.name;
-      const isNatural = /natural|neural|online|google|aria|guy|jenny/i.test(voice.name);
-      opt.textContent = `${voice.name} (${voice.lang})${isNatural ? ' ✨ Neural' : ''}`;
+      const isNeural = /natural|neural|online|google/i.test(voice.name);
+      // Clean up the display name
+      const shortName = voice.name
+        .replace(/^Microsoft\s+/i, '')
+        .replace(/\s+Online\s*\(Natural\)/i, '')
+        .replace(/\s*-\s*English\s*\(.*?\)/i, '');
+      const dialect = voice.lang.replace('en-', '').toUpperCase();
+      opt.textContent = `${shortName} (${dialect})${isNeural ? ' ✨ Neural' : ''}`;
       elements.voiceSelect.appendChild(opt);
     });
 
-    const preferred = sorted.find(v => /natural|neural|aria|guy|google us/i.test(v.name) && v.lang.startsWith('en'))
-      || sorted.find(v => v.lang.startsWith('en'))
+    // Pick best default: prefer a Neural English US voice
+    const preferred = sorted.find(v => /natural|neural/i.test(v.name) && /en-us/i.test(v.lang))
+      || sorted.find(v => /aria|guy|jenny|google us/i.test(v.name))
+      || sorted.find(v => /en-us/i.test(v.lang))
       || sorted[0];
 
     if (preferred) {
