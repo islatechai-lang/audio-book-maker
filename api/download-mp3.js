@@ -4,8 +4,13 @@ let cachedSilenceBuf = null;
 async function getSilenceBuffer() {
   if (cachedSilenceBuf) return cachedSilenceBuf;
   try {
-    const url = 'https://translate.google.com/translate_tts?ie=UTF-8&q=' + encodeURIComponent('...') + '&tl=en-gb&client=tw-ob';
-    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    const url = 'https://translate.googleapis.com/translate_tts?ie=UTF-8&q=' + encodeURIComponent('...') + '&tl=en-gb&client=gtx';
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://translate.google.com/'
+      }
+    });
     cachedSilenceBuf = Buffer.from(await res.arrayBuffer());
   } catch (e) {
     console.warn('Failed to fetch silence buffer:', e.message);
@@ -94,11 +99,12 @@ export default async function handler(req, res) {
           }
         }
       } else if (item.type === 'text') {
-        const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(item.text)}&tl=en-gb&client=tw-ob`;
+        const url = `https://translate.googleapis.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(item.text)}&tl=en-gb&client=gtx`;
         try {
           const ttsRes = await fetch(url, {
             headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Referer': 'https://translate.google.com/'
             }
           });
 
@@ -111,21 +117,23 @@ export default async function handler(req, res) {
         }
 
         if (i % 5 === 0 && i > 0) {
-          await new Promise(r => setTimeout(r, 50));
+          await new Promise(r => setTimeout(r, 40));
         }
       }
     }
 
     const combinedMp3 = Buffer.concat(audioBuffers);
 
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Content-Disposition', 'attachment; filename="audiobook.mp3"');
-    res.setHeader('Content-Length', combinedMp3.length);
-    res.setHeader('Cache-Control', 'public, max-age=3600');
-
-    return res.status(200).send(combinedMp3);
+    res.writeHead(200, {
+      'Content-Type': 'audio/mpeg',
+      'Content-Disposition': 'attachment; filename="audiobook.mp3"',
+      'Content-Length': combinedMp3.length,
+      'Cache-Control': 'public, max-age=3600'
+    });
+    return res.end(combinedMp3);
   } catch (err) {
     console.error('MP3 Generation Error:', err);
-    return res.status(500).json({ error: 'Failed to generate MP3: ' + err.message });
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ error: 'Failed to generate MP3: ' + err.message }));
   }
 }

@@ -26,8 +26,13 @@ let cachedSilenceBuf = null;
 async function getSilenceBuffer() {
   if (cachedSilenceBuf) return cachedSilenceBuf;
   try {
-    const url = 'https://translate.google.com/translate_tts?ie=UTF-8&q=' + encodeURIComponent('...') + '&tl=en-gb&client=tw-ob';
-    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    const url = 'https://translate.googleapis.com/translate_tts?ie=UTF-8&q=' + encodeURIComponent('...') + '&tl=en-gb&client=gtx';
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://translate.google.com/'
+      }
+    });
     cachedSilenceBuf = Buffer.from(await res.arrayBuffer());
   } catch (e) {
     console.warn('Failed to fetch silence buffer:', e.message);
@@ -94,16 +99,22 @@ const server = http.createServer(async (req, res) => {
     const text = reqUrl.searchParams.get('text') || '...';
     const tl = reqUrl.searchParams.get('tl') || 'en-gb';
     try {
-      const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${encodeURIComponent(tl)}&client=tw-ob`;
-      const ttsRes = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+      const url = `https://translate.googleapis.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${encodeURIComponent(tl)}&client=gtx`;
+      const ttsRes = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Referer': 'https://translate.google.com/'
+        }
+      });
       if (!ttsRes.ok) {
         res.writeHead(ttsRes.status, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'TTS upstream error' }));
+        res.end(JSON.stringify({ error: `TTS upstream error HTTP ${ttsRes.status}` }));
         return;
       }
       const buf = Buffer.from(await ttsRes.arrayBuffer());
       res.writeHead(200, {
         'Content-Type': 'audio/mpeg',
+        'Content-Length': buf.length,
         'Cache-Control': 'public, max-age=86400'
       });
       res.end(buf);
@@ -145,10 +156,13 @@ const server = http.createServer(async (req, res) => {
               }
             }
           } else {
-            const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(item.text)}&tl=en-gb&client=tw-ob`;
+            const url = `https://translate.googleapis.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(item.text)}&tl=en-gb&client=gtx`;
             try {
               const ttsRes = await fetch(url, {
-                headers: { 'User-Agent': 'Mozilla/5.0' }
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                  'Referer': 'https://translate.google.com/'
+                }
               });
               if (ttsRes.ok) {
                 const buf = Buffer.from(await ttsRes.arrayBuffer());
@@ -158,7 +172,7 @@ const server = http.createServer(async (req, res) => {
               console.warn(`TTS fetch error at chunk ${i}:`, e.message);
             }
             if (i % 5 === 0 && i > 0) {
-              await new Promise(r => setTimeout(r, 50));
+              await new Promise(r => setTimeout(r, 40));
             }
           }
         }

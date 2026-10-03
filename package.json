@@ -6,5 +6,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
+  },
+  "dependencies": {
+    "msedge-tts": "^2.0.9"
   }
 }

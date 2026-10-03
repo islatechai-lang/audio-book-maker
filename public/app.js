@@ -625,11 +625,10 @@ async function downloadMp3Audio() {
     }
 
     // 1. Fetch genuine silence buffer (valid MPEG Layer 3 silence frames)
-    elements.mp3ModalSub.textContent = 'Connecting audio master stream...';
     let silenceBuf = null;
     try {
       const silRes = await fetch('/api/tts-chunk?text=...&tl=en-gb', { signal: state.mp3AbortController.signal });
-      if (silRes.ok) {
+      if (silRes.ok && (silRes.headers.get('content-type') || '').includes('audio')) {
         silenceBuf = await silRes.arrayBuffer();
       }
     } catch (e) {
@@ -637,7 +636,26 @@ async function downloadMp3Audio() {
     }
 
     const audioParts = [];
+    let spokenChunkCount = 0;
     const total = items.length;
+
+    // Helper: split long sentences into sub-150-char phrases for TTS stability
+    function chunkTextToFit(t, maxChars = 140) {
+      if (t.length <= maxChars) return [t];
+      const res = [];
+      const words = t.split(/\s+/);
+      let cur = '';
+      for (const w of words) {
+        if ((cur + ' ' + w).trim().length > maxChars) {
+          if (cur) res.push(cur.trim());
+          cur = w;
+        } else {
+          cur = (cur + ' ' + w).trim();
+        }
+      }
+      if (cur.trim()) res.push(cur.trim());
+      return res;
+    }
 
     for (let i = 0; i < total; i++) {
       if (state.mp3AbortController.signal.aborted) break;
@@ -654,26 +672,42 @@ async function downloadMp3Audio() {
           }
         }
       } else {
-        elements.mp3ModalSub.textContent = `Synthesizing sentence ${i + 1} of ${total} (${pct}%)...`;
-        const res = await fetch(`/api/tts-chunk?text=${encodeURIComponent(it.text)}&tl=en-gb`, {
-          signal: state.mp3AbortController.signal
-        });
+        const subPhrases = chunkTextToFit(it.text, 140);
+        for (const phrase of subPhrases) {
+          elements.mp3ModalSub.textContent = `Synthesizing sentence ${i + 1} of ${total} (${pct}%)...`;
+          
+          let chunkBuf = null;
+          for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+              const res = await fetch(`/api/tts-chunk?text=${encodeURIComponent(phrase)}&tl=en-gb`, {
+                signal: state.mp3AbortController.signal
+              });
+              if (res.ok && (res.headers.get('content-type') || '').includes('audio')) {
+                chunkBuf = await res.arrayBuffer();
+                break;
+              } else {
+                await new Promise(r => setTimeout(r, 150 * (attempt + 1)));
+              }
+            } catch (err) {
+              if (state.mp3AbortController.signal.aborted) throw err;
+              await new Promise(r => setTimeout(r, 150 * (attempt + 1)));
+            }
+          }
 
-        if (res.ok) {
-          const chunkBuf = await res.arrayBuffer();
-          audioParts.push(chunkBuf);
-        } else {
-          console.warn(`Chunk ${i} fetch failed with status ${res.status}`);
+          if (chunkBuf && chunkBuf.byteLength > 0) {
+            audioParts.push(chunkBuf);
+            spokenChunkCount++;
+          }
         }
 
-        if (i % 4 === 0 && i > 0) {
-          await new Promise(r => setTimeout(r, 40));
+        if (i % 3 === 0 && i > 0) {
+          await new Promise(r => setTimeout(r, 30));
         }
       }
     }
 
-    if (audioParts.length === 0) {
-      throw new Error('Could not generate audio. Please check your network connection.');
+    if (spokenChunkCount === 0) {
+      throw new Error('Could not synthesize speech audio. Please check network connection or verify server is active.');
     }
 
     elements.mp3ModalSub.textContent = 'Assembling final MP3 stream...';

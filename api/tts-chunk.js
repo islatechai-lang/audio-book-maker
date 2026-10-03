@@ -1,4 +1,4 @@
-// Serverless API for single TTS audio chunk (fast, reliable, zero timeouts)
+// Serverless API for single TTS audio chunk (reliable Google APIs gateway with gtx client)
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -6,30 +6,41 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
-    return res.status(204).end();
+    res.writeHead(204);
+    res.end();
+    return;
   }
 
   const text = (req.query && req.query.text) || (req.body && req.body.text) || '...';
   const tl = (req.query && req.query.tl) || (req.body && req.body.tl) || 'en-gb';
 
   try {
-    const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${encodeURIComponent(tl)}&client=tw-ob`;
+    const url = `https://translate.googleapis.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${encodeURIComponent(tl)}&client=gtx`;
     const ttsRes = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://translate.google.com/'
       }
     });
 
     if (!ttsRes.ok) {
-      return res.status(ttsRes.status).json({ error: 'Upstream TTS error ' + ttsRes.status });
+      res.writeHead(ttsRes.status, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: `TTS gateway error HTTP ${ttsRes.status}` }));
+      return;
     }
 
     const buf = Buffer.from(await ttsRes.arrayBuffer());
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    return res.status(200).send(buf);
+    
+    // Ensure raw binary audio is returned directly without stringification
+    res.writeHead(200, {
+      'Content-Type': 'audio/mpeg',
+      'Content-Length': buf.length,
+      'Cache-Control': 'public, max-age=86400'
+    });
+    res.end(buf);
   } catch (err) {
     console.error('TTS Chunk Error:', err);
-    return res.status(500).json({ error: err.message });
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: err.message }));
   }
 }
