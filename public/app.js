@@ -11,14 +11,14 @@ const state = {
   currentUtterance: null,
   voices: [],
   selectedVoice: null,
-  rate: 0.85,
+  rate: 1.0,
   pitch: 0.95,
   volume: 1.0,
   ambientVolume: 0.25,
   ambientEnabled: true,
   pauseDurations: {
-    pause: 3.5,
-    longPause: 9.0
+    pause: 1.0,
+    longPause: 2.0
   },
   unoConfig: {
     endpoint: 'https://api.unorouter.com/v1/chat/completions',
@@ -114,10 +114,14 @@ function loadSavedSettings() {
   elements.endpointInput.value = state.unoConfig.endpoint;
   elements.modelInput.value = state.unoConfig.model;
 
-  if (savedRate) {
+  if (savedRate && savedRate !== '0.85') {
     state.rate = parseFloat(savedRate);
     elements.rateSlider.value = state.rate;
     elements.rateVal.textContent = `${state.rate}x`;
+  } else {
+    state.rate = 1.0;
+    elements.rateSlider.value = 1.0;
+    elements.rateVal.textContent = '1.0x';
   }
   if (savedPitch) {
     state.pitch = parseFloat(savedPitch);
@@ -203,8 +207,8 @@ function parseAndBuildQueue() {
   state.script = rawText;
   state.queue = [];
 
-  const pauseSec = parseFloat(elements.pauseDurationInput.value) || 3.5;
-  const longPauseSec = parseFloat(elements.longPauseDurationInput.value) || 9.0;
+  const pauseSec = parseFloat(elements.pauseDurationInput.value) || 1.0;
+  const longPauseSec = parseFloat(elements.longPauseDurationInput.value) || 2.0;
   state.pauseDurations.pause = pauseSec;
   state.pauseDurations.longPause = longPauseSec;
 
@@ -603,8 +607,8 @@ async function downloadMp3Audio() {
   state.mp3AbortController = new AbortController();
 
   try {
-    const pauseDuration = elements.pauseDurationInput.value || 3.5;
-    const longPauseDuration = elements.longPauseDurationInput.value || 9.0;
+    const pauseDuration = elements.pauseDurationInput.value || 1.0;
+    const longPauseDuration = elements.longPauseDurationInput.value || 2.0;
 
     const res = await fetch('/api/download-mp3', {
       method: 'POST',

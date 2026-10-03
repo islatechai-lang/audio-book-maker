@@ -36,7 +36,7 @@ function createSilentMp3(durationSeconds) {
   return Buffer.concat(frames);
 }
 
-function parseScriptIntoItems(text, pauseSec = 3.5, longPauseSec = 9.0) {
+function parseScriptIntoItems(text, pauseSec = 1.0, longPauseSec = 2.0) {
   const lines = text.split('\n');
   const items = [];
   for (let line of lines) {
@@ -100,7 +100,7 @@ const server = http.createServer(async (req, res) => {
 
     req.on('end', async () => {
       try {
-        const { text, pauseDuration = 3.5, longPauseDuration = 9.0 } = JSON.parse(body || '{}');
+        const { text, pauseDuration = 1.0, longPauseDuration = 2.0 } = JSON.parse(body || '{}');
         if (!text || !text.trim()) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Please provide script text.' }));

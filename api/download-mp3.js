@@ -17,7 +17,7 @@ function createSilentMp3(durationSeconds) {
 }
 
 // Split text into readable sentences while keeping pause tags
-function parseScriptIntoItems(text, pauseSec = 3.5, longPauseSec = 9.0) {
+function parseScriptIntoItems(text, pauseSec = 1.0, longPauseSec = 2.0) {
   const lines = text.split('\n');
   const items = [];
 
@@ -73,7 +73,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { text, pauseDuration = 3.5, longPauseDuration = 9.0 } = req.body || {};
+    const { text, pauseDuration = 1.0, longPauseDuration = 2.0 } = req.body || {};
 
     if (!text || !text.trim()) {
       return res.status(400).json({ error: 'Please provide script text.' });
