@@ -624,12 +624,21 @@ async function downloadMp3Audio() {
       throw new Error('No speakable text found in script.');
     }
 
+    let endpointPath = '/api/tts-chunk';
+
     // 1. Fetch genuine silence buffer (valid MPEG Layer 3 silence frames)
     let silenceBuf = null;
     try {
-      const silRes = await fetch('/api/tts-chunk?text=...&tl=en-gb', { signal: state.mp3AbortController.signal });
+      let silRes = await fetch(`${endpointPath}?text=...&tl=en-gb`, { signal: state.mp3AbortController.signal });
       if (silRes.ok && (silRes.headers.get('content-type') || '').includes('audio')) {
         silenceBuf = await silRes.arrayBuffer();
+      } else {
+        // Fallback to explicit .js route
+        silRes = await fetch(`/api/tts-chunk.js?text=...&tl=en-gb`, { signal: state.mp3AbortController.signal });
+        if (silRes.ok && (silRes.headers.get('content-type') || '').includes('audio')) {
+          silenceBuf = await silRes.arrayBuffer();
+          endpointPath = '/api/tts-chunk.js';
+        }
       }
     } catch (e) {
       console.warn('Silence fetch error:', e);
@@ -681,10 +690,24 @@ async function downloadMp3Audio() {
           let chunkBuf = null;
           for (let attempt = 0; attempt < 2; attempt++) {
             try {
-              const res = await fetch(`/api/tts-chunk?text=${encodeURIComponent(phrase)}&tl=en-gb`, {
+              let res = await fetch(`${endpointPath}?text=${encodeURIComponent(phrase)}&tl=en-gb`, {
                 signal: state.mp3AbortController.signal
               });
-              const ctype = res.headers.get('content-type') || '';
+              let ctype = res.headers.get('content-type') || '';
+
+              // If returned HTML, try explicit .js endpoint
+              if (ctype.includes('text/html') && endpointPath === '/api/tts-chunk') {
+                const retryRes = await fetch(`/api/tts-chunk.js?text=${encodeURIComponent(phrase)}&tl=en-gb`, {
+                  signal: state.mp3AbortController.signal
+                });
+                const retryCtype = retryRes.headers.get('content-type') || '';
+                if (retryRes.ok && retryCtype.includes('audio')) {
+                  endpointPath = '/api/tts-chunk.js';
+                  res = retryRes;
+                  ctype = retryCtype;
+                }
+              }
+
               if (res.ok && ctype.includes('audio')) {
                 chunkBuf = await res.arrayBuffer();
                 break;
