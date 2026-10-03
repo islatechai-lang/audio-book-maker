@@ -40,7 +40,6 @@ const elements = {
   scriptInput: document.getElementById('scriptInput'),
   teleprompter: document.getElementById('teleprompter'),
   playBtn: document.getElementById('playBtn'),
-  playIcon: document.getElementById('playIcon'),
   pauseBtn: document.getElementById('pauseBtn'),
   stopBtn: document.getElementById('stopBtn'),
   prevBtn: document.getElementById('prevBtn'),
@@ -91,9 +90,10 @@ function init() {
   initVoices();
   bindEvents();
 
-  // Input starts completely empty
+  // Input starts empty
   elements.scriptInput.value = '';
   parseAndBuildQueue();
+  updatePlaybackUI();
 }
 
 // Restore saved settings
@@ -348,7 +348,15 @@ function updateBadges(words, seconds) {
   elements.estTimeBadge.textContent = `~${mins}m ${secs}s`;
 }
 
-// Speech Playback Logic
+// Play / Pause / Stop Handlers
+function togglePlayPause() {
+  if (state.isPlaying) {
+    pause();
+  } else {
+    play();
+  }
+}
+
 function play() {
   if (state.queue.length === 0) {
     parseAndBuildQueue();
@@ -358,17 +366,9 @@ function play() {
     }
   }
 
-  if (state.isPaused) {
-    state.isPaused = false;
-    state.isPlaying = true;
-    updatePlaybackUI();
-    if (state.ambientEnabled) ambient.start();
-    window.speechSynthesis.resume();
-    startElapsedTimer();
-    return;
-  }
+  // Cancel any lingering utterances to avoid browser deadlocks
+  window.speechSynthesis.cancel();
 
-  stopAll();
   state.isPlaying = true;
   state.isPaused = false;
   state.currentIndex = state.currentIndex || 0;
@@ -408,8 +408,10 @@ function playNextChunk() {
 
     state.pauseTimer = setTimeout(() => {
       if (pulseChunk) pulseChunk.classList.remove('active-pause');
-      state.currentIndex++;
-      playNextChunk();
+      if (state.isPlaying && !state.isPaused) {
+        state.currentIndex++;
+        playNextChunk();
+      }
     }, currentItem.duration * 1000);
     return;
   }
@@ -428,13 +430,17 @@ function playNextChunk() {
   utterance.volume = state.volume;
 
   utterance.onend = () => {
-    state.currentIndex++;
-    playNextChunk();
+    // Only advance if we are actively playing
+    if (state.isPlaying && !state.isPaused) {
+      state.currentIndex++;
+      playNextChunk();
+    }
   };
 
   utterance.onerror = (e) => {
-    console.warn('Utterance interrupt:', e);
-    if (state.isPlaying && !state.isPaused) {
+    console.warn('Utterance event:', e.error);
+    // Don't auto-advance if user paused or stopped!
+    if (state.isPlaying && !state.isPaused && e.error !== 'canceled' && e.error !== 'interrupted') {
       state.currentIndex++;
       playNextChunk();
     }
@@ -444,19 +450,21 @@ function playNextChunk() {
 }
 
 function pause() {
-  if (!state.isPlaying) return;
   state.isPlaying = false;
   state.isPaused = true;
-  updatePlaybackUI();
-  elements.playbackStatus.textContent = 'Paused';
 
   if (state.pauseTimer) {
     clearTimeout(state.pauseTimer);
     state.pauseTimer = null;
   }
 
-  window.speechSynthesis.pause();
+  // Cancel speech synthesis so audio stops immediately without browser hang
+  window.speechSynthesis.cancel();
+  ambient.stop();
   clearInterval(state.elapsedInterval);
+
+  updatePlaybackUI();
+  elements.playbackStatus.textContent = 'Paused';
 }
 
 function stopAll() {
@@ -541,10 +549,30 @@ function startElapsedTimer() {
   }, 1000);
 }
 
+// Update Play/Pause/Stop UI dynamically
 function updatePlaybackUI() {
-  elements.playBtn.disabled = state.isPlaying;
-  elements.pauseBtn.disabled = !state.isPlaying;
-  elements.stopBtn.disabled = !state.isPlaying && !state.isPaused;
+  if (state.isPlaying) {
+    // Show Pause Icon in Hero button
+    elements.playBtn.innerHTML = `
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+        <rect x="6" y="4" width="4" height="16"/>
+        <rect x="14" y="4" width="4" height="16"/>
+      </svg>
+    `;
+    elements.playBtn.title = 'Pause Narration';
+    elements.pauseBtn.disabled = false;
+    elements.stopBtn.disabled = false;
+  } else {
+    // Show Play Icon in Hero button
+    elements.playBtn.innerHTML = `
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+        <polygon points="5 3 19 12 5 21 5 3"/>
+      </svg>
+    `;
+    elements.playBtn.title = state.isPaused ? 'Resume Narration' : 'Start Narration';
+    elements.pauseBtn.disabled = true;
+    elements.stopBtn.disabled = !state.isPaused;
+  }
 }
 
 // MP3 Audio Download Handler
@@ -585,7 +613,6 @@ async function downloadMp3Audio() {
     elements.mp3ModalSub.textContent = 'Assembling final MP3 stream...';
     const blob = await res.blob();
 
-    // Trigger browser file download
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -693,7 +720,9 @@ function handleRateLimitError(msg) {
 function bindEvents() {
   elements.scriptInput.addEventListener('input', parseAndBuildQueue);
 
-  elements.playBtn.addEventListener('click', play);
+  // Play button toggles play and pause
+  elements.playBtn.addEventListener('click', togglePlayPause);
+  // Dedicated Pause and Stop buttons
   elements.pauseBtn.addEventListener('click', pause);
   elements.stopBtn.addEventListener('click', stopAll);
 
@@ -706,6 +735,7 @@ function bindEvents() {
   });
 
   elements.clearBtn.addEventListener('click', () => {
+    stopAll();
     elements.scriptInput.value = '';
     parseAndBuildQueue();
     elements.playbackStatus.textContent = 'Cleared';
