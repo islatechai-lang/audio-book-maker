@@ -1,7 +1,9 @@
 {
   "version": 2,
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/api/tts-chunk", "destination": "/api/tts-chunk.js" },
+    { "source": "/api/download-mp3", "destination": "/api/download-mp3.js" },
+    { "source": "/api/unorouter", "destination": "/api/unorouter.js" },
     { "source": "/(.*)", "destination": "/public/$1" }
   ]
 }

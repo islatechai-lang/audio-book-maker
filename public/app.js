@@ -657,6 +657,8 @@ async function downloadMp3Audio() {
       return res;
     }
 
+    let lastErrMessage = '';
+
     for (let i = 0; i < total; i++) {
       if (state.mp3AbortController.signal.aborted) break;
 
@@ -682,14 +684,18 @@ async function downloadMp3Audio() {
               const res = await fetch(`/api/tts-chunk?text=${encodeURIComponent(phrase)}&tl=en-gb`, {
                 signal: state.mp3AbortController.signal
               });
-              if (res.ok && (res.headers.get('content-type') || '').includes('audio')) {
+              const ctype = res.headers.get('content-type') || '';
+              if (res.ok && ctype.includes('audio')) {
                 chunkBuf = await res.arrayBuffer();
                 break;
               } else {
+                const errJson = await res.json().catch(() => ({}));
+                lastErrMessage = errJson.error || `HTTP ${res.status} (${ctype})`;
                 await new Promise(r => setTimeout(r, 150 * (attempt + 1)));
               }
             } catch (err) {
               if (state.mp3AbortController.signal.aborted) throw err;
+              lastErrMessage = err.message;
               await new Promise(r => setTimeout(r, 150 * (attempt + 1)));
             }
           }
@@ -707,7 +713,7 @@ async function downloadMp3Audio() {
     }
 
     if (spokenChunkCount === 0) {
-      throw new Error('Could not synthesize speech audio. Please check network connection or verify server is active.');
+      throw new Error(`Audio synthesis failed (${lastErrMessage || 'Server returned non-audio response'}). Please check deployment.`);
     }
 
     elements.mp3ModalSub.textContent = 'Assembling final MP3 stream...';
