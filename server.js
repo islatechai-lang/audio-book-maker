@@ -115,7 +115,7 @@ const server = http.createServer(async (req, res) => {
           if (item.type === 'pause') {
             audioBuffers.push(createSilentMp3(item.duration));
           } else {
-            const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(item.text)}&tl=en&client=tw-ob`;
+            const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(item.text)}&tl=en-gb&client=tw-ob`;
             try {
               const ttsRes = await fetch(url, {
                 headers: { 'User-Agent': 'Mozilla/5.0' }

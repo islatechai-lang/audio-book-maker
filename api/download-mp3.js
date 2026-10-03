@@ -94,7 +94,7 @@ export default async function handler(req, res) {
         const silentMp3 = createSilentMp3(item.duration);
         audioBuffers.push(silentMp3);
       } else if (item.type === 'text') {
-        const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(item.text)}&tl=en&client=tw-ob`;
+        const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(item.text)}&tl=en-gb&client=tw-ob`;
         try {
           const ttsRes = await fetch(url, {
             headers: {

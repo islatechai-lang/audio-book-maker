@@ -160,12 +160,21 @@ function initVoices() {
       return;
     }
 
-    // Sort: Neural/Natural voices first, then alphabetical
+    const isUk = (v) => /en[-_]gb/i.test(v.lang);
+    const isUkFemale = (v) => isUk(v) && (/female|libby|sonia|maisie|hazel|susan|stephanie|fiona|serena|martha|kate|victoria/i.test(v.name) || !/male|george|ryan|oliver|alfie|brian|arthur/i.test(v.name));
+
+    // Sort: UK Female Neural first, then other UK voices, then other English Neural, then rest
     const sorted = [...englishVoices].sort((a, b) => {
-      const aIsNeural = /natural|neural|online|google|aria|guy|jenny|zira|david|mark|hazel/i.test(a.name);
-      const bIsNeural = /natural|neural|online|google|aria|guy|jenny|zira|david|mark|hazel/i.test(b.name);
+      const aUkFem = isUkFemale(a);
+      const bUkFem = isUkFemale(b);
+      if (aUkFem && !bUkFem) return -1;
+      if (!aUkFem && bUkFem) return 1;
+
+      const aIsNeural = /natural|neural|online|google/i.test(a.name);
+      const bIsNeural = /natural|neural|online|google/i.test(b.name);
       if (aIsNeural && !bIsNeural) return -1;
       if (!aIsNeural && bIsNeural) return 1;
+
       return a.name.localeCompare(b.name);
     });
 
@@ -183,10 +192,11 @@ function initVoices() {
       elements.voiceSelect.appendChild(opt);
     });
 
-    // Pick best default: prefer a Neural English US voice
-    const preferred = sorted.find(v => /natural|neural/i.test(v.name) && /en-us/i.test(v.lang))
-      || sorted.find(v => /aria|guy|jenny|google us/i.test(v.name))
-      || sorted.find(v => /en-us/i.test(v.lang))
+    // Default to UK English Female voice
+    const preferred = sorted.find(v => isUkFemale(v) && /natural|neural|google/i.test(v.name))
+      || sorted.find(v => isUkFemale(v))
+      || sorted.find(v => isUk(v))
+      || sorted.find(v => /natural|neural/i.test(v.name))
       || sorted[0];
 
     if (preferred) {
