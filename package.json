@@ -1,0 +1,10 @@
+{
+  "name": "simple-tts",
+  "version": "1.0.0",
+  "description": "Simple TTS Web App with Uno Router & Gemini Robotics",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  }
+}
