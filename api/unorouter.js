@@ -17,13 +17,13 @@ export default async function handler(req, res) {
   try {
     const { endpoint, apiKey, model, messages, prompt, modalities, audio, temperature } = req.body || {};
 
-    const targetKey = apiKey || req.headers['authorization']?.replace('Bearer ', '');
+    const targetKey = apiKey || process.env.UNO_API_KEY || req.headers['authorization']?.replace('Bearer ', '') || 'sk-UE7RO864vd28guRe8sGAp3W6HfsiZgG3ktSNwlZHrNH9k21C';
     if (!targetKey) {
       return res.status(400).json({ error: 'Missing Uno Router API key' });
     }
 
-    const targetEndpoint = endpoint || 'https://api.unorouter.com/v1/chat/completions';
-    const targetModel = model || 'gemini-robotics-er-2-preview:free';
+    const targetEndpoint = endpoint || process.env.UNO_ENDPOINT || 'https://api.unorouter.com/v1/chat/completions';
+    const targetModel = model || process.env.UNO_MODEL || 'gemini-robotics-er-2-preview:free';
 
     const requestBody = {
       model: targetModel,

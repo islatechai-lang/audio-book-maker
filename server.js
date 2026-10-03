@@ -161,8 +161,8 @@ const server = http.createServer(async (req, res) => {
     req.on('end', async () => {
       try {
         const payload = JSON.parse(body);
-        const endpoint = payload.endpoint || 'https://api.unorouter.com/v1/chat/completions';
-        const apiKey = payload.apiKey || req.headers['authorization']?.replace('Bearer ', '');
+        const endpoint = payload.endpoint || process.env.UNO_ENDPOINT || 'https://api.unorouter.com/v1/chat/completions';
+        const apiKey = payload.apiKey || process.env.UNO_API_KEY || req.headers['authorization']?.replace('Bearer ', '') || 'sk-UE7RO864vd28guRe8sGAp3W6HfsiZgG3ktSNwlZHrNH9k21C';
 
         if (!apiKey) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -171,7 +171,7 @@ const server = http.createServer(async (req, res) => {
         }
 
         const requestBody = {
-          model: payload.model || 'gemini-robotics-er-2-preview:free',
+          model: payload.model || process.env.UNO_MODEL || 'gemini-robotics-er-2-preview:free',
           messages: payload.messages || [{ role: 'user', content: payload.prompt || 'Hello' }]
         };
 
