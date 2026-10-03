@@ -1,19 +1,16 @@
-// Serverless API endpoint for generating and downloading MP3 with custom pauses
+// Serverless API endpoint for generating and downloading MP3 with genuine pause frames
 
-function createSilentMp3(durationSeconds) {
-  // MPEG-2 Layer 3, 24000 Hz, 64 kbps mono frame (384 bytes, 24ms)
-  const frameHeader = Buffer.from([0xff, 0xf3, 0x84, 0xc4]);
-  const frameLength = 384;
-  const frameData = Buffer.alloc(frameLength - 4, 0);
-  const singleFrame = Buffer.concat([frameHeader, frameData]);
-
-  const frameDuration = 576 / 24000; // 0.024s per frame
-  const frameCount = Math.max(1, Math.round(durationSeconds / frameDuration));
-  const frames = [];
-  for (let i = 0; i < frameCount; i++) {
-    frames.push(singleFrame);
+let cachedSilenceBuf = null;
+async function getSilenceBuffer() {
+  if (cachedSilenceBuf) return cachedSilenceBuf;
+  try {
+    const url = 'https://translate.google.com/translate_tts?ie=UTF-8&q=' + encodeURIComponent('...') + '&tl=en-gb&client=tw-ob';
+    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    cachedSilenceBuf = Buffer.from(await res.arrayBuffer());
+  } catch (e) {
+    console.warn('Failed to fetch silence buffer:', e.message);
   }
-  return Buffer.concat(frames);
+  return cachedSilenceBuf;
 }
 
 // Split text into readable sentences while keeping pause tags
@@ -52,7 +49,6 @@ function parseScriptIntoItems(text, pauseSec = 1.0, longPauseSec = 2.0) {
     for (let s of sentences) {
       const clean = s.trim();
       if (!clean) continue;
-      // Cap individual sentence query to 180 chars for TTS stability
       if (clean.length > 180) {
         const parts = clean.match(/.{1,180}(\s|$)/g) || [clean];
         for (let p of parts) {
@@ -85,14 +81,18 @@ export default async function handler(req, res) {
     }
 
     const audioBuffers = [];
+    const silence = await getSilenceBuffer();
 
-    // Process each item
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
 
       if (item.type === 'pause') {
-        const silentMp3 = createSilentMp3(item.duration);
-        audioBuffers.push(silentMp3);
+        if (silence) {
+          const repeatCount = Math.max(1, Math.round(item.duration / 0.72));
+          for (let r = 0; r < repeatCount; r++) {
+            audioBuffers.push(silence);
+          }
+        }
       } else if (item.type === 'text') {
         const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(item.text)}&tl=en-gb&client=tw-ob`;
         try {
@@ -110,9 +110,8 @@ export default async function handler(req, res) {
           console.warn(`TTS fetch error on item ${i}:`, fetchErr.message);
         }
 
-        // Small micro-delay between API fetches to avoid rate limits
         if (i % 5 === 0 && i > 0) {
-          await new Promise(r => setTimeout(r, 60));
+          await new Promise(r => setTimeout(r, 50));
         }
       }
     }

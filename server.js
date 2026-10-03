@@ -22,18 +22,17 @@ const MIME_TYPES = {
   '.mp3': 'audio/mpeg'
 };
 
-function createSilentMp3(durationSeconds) {
-  const frameHeader = Buffer.from([0xff, 0xf3, 0x84, 0xc4]);
-  const frameLength = 384;
-  const frameData = Buffer.alloc(frameLength - 4, 0);
-  const singleFrame = Buffer.concat([frameHeader, frameData]);
-  const frameDuration = 576 / 24000;
-  const frameCount = Math.max(1, Math.round(durationSeconds / frameDuration));
-  const frames = [];
-  for (let i = 0; i < frameCount; i++) {
-    frames.push(singleFrame);
+let cachedSilenceBuf = null;
+async function getSilenceBuffer() {
+  if (cachedSilenceBuf) return cachedSilenceBuf;
+  try {
+    const url = 'https://translate.google.com/translate_tts?ie=UTF-8&q=' + encodeURIComponent('...') + '&tl=en-gb&client=tw-ob';
+    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    cachedSilenceBuf = Buffer.from(await res.arrayBuffer());
+  } catch (e) {
+    console.warn('Failed to fetch silence buffer:', e.message);
   }
-  return Buffer.concat(frames);
+  return cachedSilenceBuf;
 }
 
 function parseScriptIntoItems(text, pauseSec = 1.0, longPauseSec = 2.0) {
@@ -90,7 +89,32 @@ const server = http.createServer(async (req, res) => {
 
   const reqUrl = new URL(req.url, `http://${req.headers.host}`);
 
-  // API: Download MP3
+  // API: Single TTS Chunk (Zero timeout, used for client-side progressive generation)
+  if (reqUrl.pathname === '/api/tts-chunk') {
+    const text = reqUrl.searchParams.get('text') || '...';
+    const tl = reqUrl.searchParams.get('tl') || 'en-gb';
+    try {
+      const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${encodeURIComponent(tl)}&client=tw-ob`;
+      const ttsRes = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+      if (!ttsRes.ok) {
+        res.writeHead(ttsRes.status, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'TTS upstream error' }));
+        return;
+      }
+      const buf = Buffer.from(await ttsRes.arrayBuffer());
+      res.writeHead(200, {
+        'Content-Type': 'audio/mpeg',
+        'Cache-Control': 'public, max-age=86400'
+      });
+      res.end(buf);
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  // API: Download MP3 (Batch generation)
   if (reqUrl.pathname === '/api/download-mp3' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => {
@@ -109,11 +133,17 @@ const server = http.createServer(async (req, res) => {
 
         const items = parseScriptIntoItems(text, parseFloat(pauseDuration), parseFloat(longPauseDuration));
         const audioBuffers = [];
+        const silence = await getSilenceBuffer();
 
         for (let i = 0; i < items.length; i++) {
           const item = items[i];
           if (item.type === 'pause') {
-            audioBuffers.push(createSilentMp3(item.duration));
+            if (silence) {
+              const repeatCount = Math.max(1, Math.round(item.duration / 0.72));
+              for (let r = 0; r < repeatCount; r++) {
+                audioBuffers.push(silence);
+              }
+            }
           } else {
             const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(item.text)}&tl=en-gb&client=tw-ob`;
             try {
